@@ -5,7 +5,7 @@ import csv
 import shutil
 from pathlib import Path
 from typing import Optional, List
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -21,6 +21,16 @@ from source.level2_qa import Level2QAEngine
 from source.main import process_all, create_submission_zip
 
 app = FastAPI(title="WTQ Utility Bill Decoder", version="1.0.0")
+
+# Middleware to normalize Vercel serverless paths
+@app.middleware("http")
+async def vercel_path_rewrite_middleware(request: Request, call_next):
+    matched = request.headers.get("x-matched-path")
+    if matched:
+        request.scope["path"] = matched
+    elif request.scope.get("path") in ("/api/index.py", "/api/index", "/api"):
+        request.scope["path"] = "/"
+    return await call_next(request)
 
 # Setup directory paths with serverless writable fallback
 def get_writable_dir(sub_name: str) -> Path:
@@ -53,11 +63,19 @@ class QuestionRequest(BaseModel):
     question_id: Optional[str] = "CUSTOM"
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/api", response_class=HTMLResponse)
+@app.get("/api/index", response_class=HTMLResponse)
+@app.get("/api/index.py", response_class=HTMLResponse)
 async def serve_index():
-    index_file = STATIC_DIR / "index.html"
-    if not index_file.exists():
-        raise HTTPException(status_code=404, detail="Index template not found.")
-    return HTMLResponse(content=index_file.read_text(encoding="utf-8"))
+    candidates = [
+        STATIC_DIR / "index.html",
+        BASE_DIR / "public" / "index.html",
+        BASE_DIR / "source" / "static" / "index.html",
+    ]
+    for p in candidates:
+        if p.exists():
+            return HTMLResponse(content=p.read_text(encoding="utf-8"))
+    raise HTTPException(status_code=404, detail="Index template not found.")
 
 @app.get("/api/bills")
 async def list_available_bills():
