@@ -61,10 +61,42 @@ class Level1Extractor:
         # Ensure all required fields exist in exact template order
         clean_data = {}
         for key in REQUIRED_LEVEL1_FIELDS:
-            if key in ("charges", "taxes"):
-                val = data.get(key, [])
-                clean_data[key] = val if isinstance(val, list) else []
+            if key == "charges":
+                raw_charges = data.get("charges", [])
+                clean_charges = []
+                if isinstance(raw_charges, list):
+                    for c in raw_charges:
+                        if isinstance(c, dict) and "amount" in c and "type" in c:
+                            amt = c["amount"]
+                            if amt is not None and isinstance(amt, (int, float)) and amt != 0:
+                                clean_charges.append({"type": str(c["type"]), "amount": amt})
+                clean_data["charges"] = clean_charges
+            elif key == "taxes":
+                raw_taxes = data.get("taxes", [])
+                clean_taxes = []
+                if isinstance(raw_taxes, list):
+                    for t in raw_taxes:
+                        if isinstance(t, dict) and "amount" in t and "type" in t:
+                            amt = t["amount"]
+                            if amt is not None and isinstance(amt, (int, float)) and amt != 0:
+                                clean_taxes.append({"type": str(t["type"]), "amount": amt})
+                clean_data["taxes"] = clean_taxes
+            elif key == "provider":
+                prov = data.get("provider")
+                if prov:
+                    prov_str = str(prov).upper()
+                    if "KESC" in prov_str or "KE" in prov_str or "ELECTRIC" in prov_str:
+                        clean_data["provider"] = "KE"
+                    elif "LESCO" in prov_str:
+                        clean_data["provider"] = "LESCO"
+                    elif "IESCO" in prov_str:
+                        clean_data["provider"] = "IESCO"
+                    else:
+                        clean_data["provider"] = prov
+                else:
+                    clean_data["provider"] = None
             else:
                 clean_data[key] = data.get(key, None)
 
         return clean_data
+
