@@ -6,9 +6,10 @@ Open in browser:
     http://127.0.0.1:8000
 """
 
-import uvicorn
+from source.app import app
 
 if __name__ == "__main__":
+    import uvicorn
     print("\n==================================================")
     print("  WTQ Utility Bill Decoder - Web Application")
     print("==================================================")

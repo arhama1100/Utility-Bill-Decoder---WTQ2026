@@ -1,0 +1,18 @@
+[project]
+name = "wtq-2026-utility-bill-decoder"
+version = "1.0.0"
+description = "WTQ 2026 Utility Bill Decoder"
+# Vercel only ships Python 3.12/3.13/3.14; do not request 3.11 here.
+requires-python = ">=3.12"
+dependencies = [
+    "google-genai==2.29.0",
+    "python-dotenv==1.2.4",
+    "pillow==12.3.0",
+    "pydantic==2.13.5",
+    "fastapi==0.141.1",
+    "uvicorn==0.52.4",
+    "python-multipart==0.0.32",
+]
+
+[tool.vercel]
+entrypoint = "source.app:app"

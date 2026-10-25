@@ -1,13 +1,26 @@
 {
-  "version": 2,
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/index.py"
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60
     },
-    {
-      "source": "/(.*)",
-      "destination": "/api/index.py"
+    "api/extract.py": {
+      "maxDuration": 60
+    },
+    "api/ask.py": {
+      "maxDuration": 60
+    },
+    "api/status.py": {
+      "maxDuration": 60
+    },
+    "api/health.py": {
+      "maxDuration": 60
+    },
+    "api/bills.py": {
+      "maxDuration": 60
+    },
+    "app.py": {
+      "maxDuration": 60
     }
-  ]
+  }
 }

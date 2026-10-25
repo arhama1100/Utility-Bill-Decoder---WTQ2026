@@ -10,6 +10,9 @@ from source.config import LEVEL1_SYSTEM_PROMPT, REQUIRED_LEVEL1_FIELDS, GEMINI_A
 logger = logging.getLogger(__name__)
 
 def call_with_retry(client: genai.Client, model_name: str, contents: list, config: Optional[dict] = None, max_retries: int = 5):
+    import os
+    if os.getenv("VERCEL"):
+        max_retries = min(max_retries, 2)
     for attempt in range(max_retries):
         try:
             kwargs = {"config": config} if config else {}
@@ -21,7 +24,7 @@ def call_with_retry(client: genai.Client, model_name: str, contents: list, confi
         except Exception as e:
             err_str = str(e)
             if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "Quota" in err_str:
-                delay = 4.5 * (1.5 ** attempt)
+                delay = 1.5 if os.getenv("VERCEL") else 4.5 * (1.5 ** attempt)
                 print(f"    [Rate Limit 429] Waiting {delay:.1f}s before retry ({attempt+1}/{max_retries})...")
                 time.sleep(delay)
             else:

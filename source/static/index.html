@@ -25,6 +25,7 @@
         <div>
           <div class="flex items-center space-x-2">
             <h1 class="text-base font-bold text-white tracking-tight">Utility Bill Decoder</h1>
+            <span class="text-[10px] px-1.5 py-0.5 rounded-md bg-cyan-500/15 text-cyan-300 border border-cyan-500/20 font-semibold tracking-wide">WTQ 2026</span>
           </div>
           <p class="text-xs text-slate-400">Pakistani Electricity Bill AI Parser & Customer Assistant</p>
         </div>
@@ -51,8 +52,9 @@
           </div>
           <span class="text-sm font-semibold text-slate-200">Click or drag & drop bill image</span>
           <span class="text-xs text-slate-500 mt-1">Supports PNG, JPG, or JPEG</span>
-          <input id="bill-upload" type="file" accept="image/*" class="hidden">
+          <input id="bill-upload" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" class="hidden">
         </div>
+        <div id="extract-error" class="hidden mt-3 text-xs text-rose-300 bg-rose-950/40 border border-rose-800/50 rounded-xl px-3 py-2"></div>
       </div>
 
       <!-- Bill Image Viewer Card -->
@@ -284,7 +286,7 @@
 
   <footer class="border-t border-slate-800/80 bg-slate-900/30 py-4 mt-auto">
     <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500">
-      Utility Bill Decoder • AI Assistant
+      Utility Bill Decoder • WTQ 2026 • AI Assistant
     </div>
   </footer>
 
@@ -301,6 +303,64 @@
     const imgLoading = document.getElementById('img-loading');
     const activeBillTag = document.getElementById('active-bill-tag');
     const btnReextract = document.getElementById('btn-reextract');
+    const extractErrorBox = document.getElementById('extract-error');
+    const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+
+    function showExtractError(message) {
+      if (extractErrorBox) {
+        extractErrorBox.textContent = message;
+        extractErrorBox.classList.remove('hidden');
+      }
+      alert(message);
+    }
+
+    function clearExtractError() {
+      if (extractErrorBox) {
+        extractErrorBox.textContent = '';
+        extractErrorBox.classList.add('hidden');
+      }
+    }
+
+    function detailFromBody(data) {
+      if (!data || typeof data !== 'object') return '';
+      if (data.error) return data.error;
+      if (typeof data.detail === 'string') return data.detail;
+      if (Array.isArray(data.detail) && data.detail[0] && data.detail[0].msg) return data.detail[0].msg;
+      if (data.message) return data.message;
+      return '';
+    }
+
+    function messageFromExtractResponse(res, data) {
+      const code = data && data.code;
+      const fromBody = detailFromBody(data);
+      if (code === 'unsupported_file' || code === 'file_too_large' || code === 'missing_config' || code === 'api_failure' || code === 'timeout' || code === 'not_found' || code === 'invalid_request') {
+        return fromBody || 'Extraction failed.';
+      }
+      if (res.status === 504) return fromBody || 'Extraction timed out while waiting for the AI service. Please retry.';
+      if (res.status === 413) return fromBody || 'The bill image is too large. Please upload a PNG or JPG smaller than 4 MB.';
+      if (res.status === 405 || fromBody === 'Method Not Allowed') {
+        return 'The extract API route is not reachable on this deployment. Redeploy the updated routing configuration.';
+      }
+      if (fromBody) return 'Extraction failed: ' + fromBody;
+      if (!res.ok) return 'Extraction failed: the server returned HTTP ' + res.status + '.';
+      return 'Extraction failed: the server did not explain the error.';
+    }
+
+    async function parseJsonResponse(res) {
+      const text = await res.text();
+      if (!text) return {};
+      try {
+        return JSON.parse(text);
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function isSupportedBillFile(file) {
+      const name = (file.name || '').toLowerCase();
+      const type = (file.type || '').toLowerCase();
+      return type === 'image/png' || type === 'image/jpeg' || type === 'image/jpg' || name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg');
+    }
 
     // Tabs
     const tabBtnL1 = document.getElementById('tab-btn-l1');
@@ -355,6 +415,16 @@
       previewPlaceholder.classList.add('hidden');
       billPreviewImg.classList.remove('hidden');
       billPreviewImg.src = URL.createObjectURL(file);
+      clearExtractError();
+
+      if (!isSupportedBillFile(file)) {
+        showExtractError('Unsupported file type. Upload a PNG, JPG, or JPEG electricity bill image.');
+        return;
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        showExtractError('The bill image is too large. Please upload a PNG or JPG smaller than 4 MB.');
+        return;
+      }
 
       imgLoading.classList.remove('hidden');
       imgLoading.classList.add('flex');
@@ -363,9 +433,12 @@
       formData.append('file', file);
 
       try {
-        const res = await fetch('/api/extract', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (data.success) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 55000);
+        const res = await fetch('/api/extract', { method: 'POST', body: formData, signal: controller.signal });
+        clearTimeout(timer);
+        const data = await parseJsonResponse(res);
+        if (data && data.success) {
           activeBill = data.bill_id;
           activeBillRelPath = data.image_rel_path;
           
@@ -375,11 +448,17 @@
           btnReextract.classList.add('flex');
 
           renderDetails(data.data);
+        } else if (data) {
+          showExtractError(messageFromExtractResponse(res, data));
         } else {
-          alert('Extraction failed: ' + (data.error || 'Unknown error'));
+          showExtractError('Extraction failed: the server returned a non-JSON response. This usually means the API route is misconfigured.');
         }
       } catch (err) {
-        alert('Extraction failed: ' + err);
+        if (err && err.name === 'AbortError') {
+          showExtractError('Extraction failed: the request timed out. Try a smaller PNG or JPG image.');
+        } else {
+          showExtractError('Extraction failed: ' + (err && err.message ? err.message : 'network error'));
+        }
       } finally {
         imgLoading.classList.add('hidden');
         imgLoading.classList.remove('flex');
@@ -394,15 +473,25 @@
       try {
         const formData = new FormData();
         formData.append('rel_path', activeBillRelPath);
-        const res = await fetch('/api/extract', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (data.success) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 55000);
+        const res = await fetch('/api/extract', { method: 'POST', body: formData, signal: controller.signal });
+        clearTimeout(timer);
+        const data = await parseJsonResponse(res);
+        if (data && data.success) {
+          clearExtractError();
           renderDetails(data.data);
+        } else if (data) {
+          showExtractError(messageFromExtractResponse(res, data));
         } else {
-          alert("Error: " + data.error);
+          showExtractError('Extraction failed: the server returned a non-JSON response.');
         }
       } catch (err) {
-        alert("Extraction failed: " + err);
+        if (err && err.name === 'AbortError') {
+          showExtractError('Extraction failed: the request timed out. Please retry.');
+        } else {
+          showExtractError("Extraction failed: " + (err && err.message ? err.message : 'network error'));
+        }
       } finally {
         imgLoading.classList.add('hidden');
         imgLoading.classList.remove('flex');
@@ -514,14 +603,16 @@
             question: question
           })
         });
-        const resData = await res.json();
-        if (resData.success) {
+        const resData = await parseJsonResponse(res);
+        if (resData && resData.success) {
           textDisplay.textContent = resData.answer;
+        } else if (resData) {
+          textDisplay.textContent = "Error: " + (resData.error || detailFromBody(resData) || ('HTTP ' + res.status));
         } else {
-          textDisplay.textContent = "Error: " + resData.error;
+          textDisplay.textContent = "Failed to query AI: the server returned a non-JSON response.";
         }
       } catch (err) {
-        textDisplay.textContent = "Failed to query AI: " + err;
+        textDisplay.textContent = "Failed to query AI: " + (err && err.message ? err.message : err);
       }
     }
   </script>

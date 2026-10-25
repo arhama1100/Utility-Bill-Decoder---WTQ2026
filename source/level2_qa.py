@@ -40,7 +40,8 @@ class Level2QAEngine:
         image_path: Path,
         level1_data: Dict[str, Any],
         question_id: str,
-        question_text: str
+        question_text: str,
+        pace: bool = True,
     ) -> str:
         """Answer a customer question for a given bill image and its extracted details."""
         mime_type = "image/png" if image_path.suffix.lower() == ".png" else "image/jpeg"
@@ -63,7 +64,8 @@ Follow all rules: verify all numbers/counts/percentages precisely, label any est
         answer = response.text.strip() if response.text else "Information not available on the bill."
         answer_clean = answer.replace("\n\n", " ").replace("\n", " ").strip()
         
-        # Pacing pause to stay within rate limits (15 requests / min = ~4s per request)
-        time.sleep(3.5)
-        
+        # Batch jobs pause between calls to stay within rate limits.
+        if pace:
+            time.sleep(3.5)
+
         return answer_clean
